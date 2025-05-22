@@ -6,7 +6,8 @@ import numpy as np
 # Load the model
 model = joblib.load("model.pkl")
 
-# Feature list used in the model
+# Feature list used in the model (ensure this matches your model's expected features)
+# Based on your previous context, these are the features your model *expects*
 feature_names = [
     'Age', 'BusinessTravel', 'DailyRate', 'Department', 'DistanceFromHome',
     'Education', 'EducationField', 'EnvironmentSatisfaction', 'Gender',
@@ -62,7 +63,7 @@ if mode == "🔹 Manual Input":
     manual_input['JobInvolvement'] = st.selectbox("Job Involvement", list(range(1, 5)))
     manual_input['JobLevel'] = st.selectbox("Job Level", list(range(1, 6)))
     manual_input['JobRole'] = st.selectbox("Job Role", ['Sales Executive', 'Research Scientist', 'Laboratory Technician', 'Manufacturing Director',
-                                                        'Healthcare Representative', 'Manager', 'Sales Representative', 'Research Director', 'Human Resources'])
+                                                     'Healthcare Representative', 'Manager', 'Sales Representative', 'Research Director', 'Human Resources'])
     manual_input['JobSatisfaction'] = st.selectbox("Job Satisfaction", list(range(1, 5)))
     manual_input['MaritalStatus'] = st.selectbox("Marital Status", ['Single', 'Married', 'Divorced'])
     manual_input['MonthlyIncome'] = st.number_input("Monthly Income", 1000, 20000, 5000)
@@ -99,21 +100,38 @@ else:
     if uploaded_file is not None:
         df_csv = pd.read_csv(uploaded_file)
 
+        # --- NEW CODE TO HANDLE UNSEEN FEATURES ---
+        # Identify columns in CSV that are not in your model's expected features
+        columns_to_drop = [col for col in df_csv.columns if col not in feature_names]
+
+        # Drop these columns from the DataFrame
+        if columns_to_drop:
+            st.warning(f"Dropping columns from CSV that are not model features: {', '.join(columns_to_drop)}")
+            df_csv = df_csv.drop(columns=columns_to_drop)
+        # --- END NEW CODE ---
+
         # Show preview
         st.write("Data Preview:")
         st.dataframe(df_csv.head())
 
-        if st.button("Predict"):
-            df_encoded, _ = simple_label_encode(df_csv)
-            predictions = model.predict(df_encoded)
-            probabilities = model.predict_proba(df_encoded)[:, 1]
+        # Check if all required feature_names are now in df_csv
+        missing_features_after_drop = [f for f in feature_names if f not in df_csv.columns]
+        if missing_features_after_drop:
+            st.error(f"Error: The uploaded CSV is missing expected model features: {', '.join(missing_features_after_drop)}. Please ensure your CSV contains all the necessary columns.")
+        elif not df_csv.empty: # Only proceed if DataFrame is not empty after dropping
+            if st.button("Predict"):
+                df_encoded, _ = simple_label_encode(df_csv)
+                predictions = model.predict(df_encoded)
+                probabilities = model.predict_proba(df_encoded)[:, 1]
 
-            df_result = df_csv.copy()
-            df_result["Prediction"] = ["Resign" if p == 1 else "Stay" for p in predictions]
-            df_result["Resignation_Probability"] = probabilities
+                df_result = df_csv.copy() # Use the modified df_csv for results
+                df_result["Prediction"] = ["Resign" if p == 1 else "Stay" for p in predictions]
+                df_result["Resignation_Probability"] = probabilities
 
-            st.write("Prediction Results")
-            st.dataframe(df_result)
+                st.write("Prediction Results")
+                st.dataframe(df_result)
 
-            csv_download = df_result.to_csv(index=False).encode("utf-8")
-            st.download_button("Download Predictions as CSV", data=csv_download, file_name="predicted_attrition.csv", mime="text/csv")
+                csv_download = df_result.to_csv(index=False).encode("utf-8")
+                st.download_button("Download Predictions as CSV", data=csv_download, file_name="predicted_attrition.csv", mime="text/csv")
+        else:
+            st.warning("The uploaded CSV file is empty or became empty after processing.")
